@@ -18,6 +18,12 @@
 #include "psp_audio.h"
 #include "psp_timer.h"
 
+#include <pspdebug.h>
+#include <pspkernel.h>
+
+/* Debug log helper */
+#define GLOG(...) pspDebugScreenPrintf(__VA_ARGS__)
+
 game_t g_game;
 
 /* Redneck Rampage map names: E{episode}L{level}.MAP */
@@ -31,42 +37,75 @@ int game_init(const char *grp_path) {
     memset(&g_game, 0, sizeof(game_t));
 
     /* Initialize engine */
+    GLOG("  [init] engine...\n");
     initengine();
 
     /* Open GRP file */
+    GLOG("  [init] opening GRP: %s\n", grp_path);
     g_grp = grp_open(grp_path);
     if (!g_grp) {
+        GLOG("  [FAIL] grp_open returned NULL\n");
         /* Try alternate paths */
+        GLOG("  [init] trying alternate paths...\n");
         g_grp = grp_open("ms0:/PSP/GAME/RedneckRampage/REDNECK.GRP");
         if (!g_grp) {
             g_grp = grp_open("REDNECK.GRP");
             if (!g_grp) {
+                GLOG("  [FAIL] All GRP paths failed!\n");
                 return -1;
             }
         }
     }
+    GLOG("  [OK] GRP opened, %d files\n", g_grp->num_files);
+    GLOG("  Free mem: %u KB\n", (unsigned)(sceKernelTotalFreeMemSize() / 1024));
 
     /* Load palette */
+    GLOG("  [init] loading palette...\n");
     if (loadpalette("PALETTE.DAT", "LOOKUP.DAT") != 0) {
-        return -1;
+        GLOG("  [FAIL] loadpalette failed\n");
+        return -2;
     }
+    GLOG("  [OK] palette loaded, %d shades\n", numshades);
 
     /* Load art tiles */
-    if (art_load_from_grp() != 0) {
-        return -1;
+    GLOG("  [init] loading ART tiles...\n");
+    int art_result = art_load_from_grp();
+    if (art_result != 0) {
+        GLOG("  [WARN] art_load returned %d (non-fatal)\n", art_result);
+        /* Don't fail - some tiles may still have loaded */
+    } else {
+        GLOG("  [OK] ART tiles loaded\n");
     }
+    GLOG("  Free mem: %u KB\n", (unsigned)(sceKernelTotalFreeMemSize() / 1024));
 
     /* Initialize subsystems */
+    GLOG("  [init] display...\n");
     psp_display_init();
+    GLOG("  [OK] display ready\n");
+
+    GLOG("  [init] input...\n");
     psp_input_init();
+    GLOG("  [OK] input ready\n");
+
+    GLOG("  [init] audio...\n");
     psp_audio_init();
+    GLOG("  [OK] audio ready\n");
+
+    GLOG("  [init] timer...\n");
     psp_timer_init();
+    GLOG("  [OK] timer ready\n");
+
+    GLOG("  [init] menus...\n");
     menus_init();
+    GLOG("  [OK] menus ready\n");
 
     /* Start at title screen */
     g_game.state = GAMESTATE_TITLE;
     g_game.episode = 1;
     g_game.level = 1;
+
+    GLOG("  [init] COMPLETE! Free mem: %u KB\n",
+         (unsigned)(sceKernelTotalFreeMemSize() / 1024));
 
     return 0;
 }
@@ -94,16 +133,23 @@ int game_load_level(int episode, int level) {
     int32_t start_x, start_y, start_z;
     int16_t start_ang, start_sect;
 
+    GLOG("Loading map: %s\n", mapname);
+
     if (map_load(mapname, &start_x, &start_y, &start_z,
                  &start_ang, &start_sect) != 0) {
         /* Try without the E prefix for alternate naming */
         char altname[16];
         snprintf(altname, sizeof(altname), "RR%d_%d.MAP", episode, level);
+        GLOG("Trying alt: %s\n", altname);
         if (map_load(altname, &start_x, &start_y, &start_z,
                      &start_ang, &start_sect) != 0) {
+            GLOG("Map load FAILED!\n");
             return -1;
         }
     }
+
+    GLOG("Map loaded: %d sectors, %d walls, %d sprites\n",
+         numsectors, numwalls, numsprites);
 
     /* Initialize player */
     player_init(&g_game, start_x, start_y, start_z, start_ang, start_sect);
@@ -121,6 +167,8 @@ int game_load_level(int episode, int level) {
             g_game.total_kills++;
         }
     }
+
+    GLOG("Actors: %d, Enemies: %d\n", num_actors, g_game.total_kills);
 
     g_game.episode = episode;
     g_game.level = level;
@@ -183,9 +231,8 @@ void game_run(void) {
 
             case GAMESTATE_MENU:
                 menus_update(&g_game);
-                /* Don't clear - draw menu over whatever is there */
+                /* Draw menu */
                 if (g_game.state == GAMESTATE_MENU) {
-                    /* If no game loaded, draw dark bg */
                     for (int i = 0; i < XDIM * YDIM; i++) {
                         framebuffer[i] = 0xFF100808;
                     }
@@ -195,33 +242,24 @@ void game_run(void) {
 
             case GAMESTATE_LOADING:
                 if (game_load_level(g_game.episode, g_game.level) != 0) {
-                    /* Failed to load - back to menu */
                     g_game.state = GAMESTATE_MENU;
                 }
-                continue; /* Skip rendering this frame */
+                continue;
 
             case GAMESTATE_PLAYING:
-                /* Process game ticks at fixed rate */
                 while (tic_accumulator >= tic_interval_us) {
                     game_tick();
                     tic_accumulator -= tic_interval_us;
-                    /* Safety: don't run more than 4 ticks per frame */
                     if (tic_accumulator > tic_interval_us * 4) {
                         tic_accumulator = 0;
                     }
                 }
-
-                /* Render */
                 game_render();
-
-                /* Check for pause */
                 menus_update(&g_game);
                 break;
 
             case GAMESTATE_PAUSED:
-                /* Render game in background */
                 game_render();
-                /* Draw pause menu over it */
                 menus_update(&g_game);
                 menus_draw(&g_game);
                 break;

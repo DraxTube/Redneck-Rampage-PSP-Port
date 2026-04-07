@@ -36,13 +36,13 @@ typedef int32_t  SDWORD;
 /* ============================================================
  * Build engine constants
  * ============================================================ */
-#define MAXSECTORS   1024
-#define MAXWALLS     8192
-#define MAXSPRITES   4096
-#define MAXTILES     9216
+#define MAXSECTORS   512
+#define MAXWALLS     4096
+#define MAXSPRITES   2048
+#define MAXTILES     6144
 #define MAXSTATUS    1024
 #define MAXPLAYERS   1
-#define MAXSPRITESONSCREEN 1024
+#define MAXSPRITESONSCREEN 512
 
 /* PSP rendering resolution */
 #define XDIM         320
