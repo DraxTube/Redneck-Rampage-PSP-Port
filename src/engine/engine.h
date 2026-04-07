@@ -157,33 +157,33 @@ typedef struct {
  * Global engine state
  * ============================================================ */
 
-/* Map data */
-extern sectortype  sector[MAXSECTORS];
-extern walltype    wall[MAXWALLS];
-extern spritetype  sprite[MAXSPRITES];
+/* Map data (dynamically allocated in initengine) */
+extern sectortype  *sector;
+extern walltype    *wall;
+extern spritetype  *sprite;
 extern int16_t     numsectors, numwalls;
 extern int16_t     numsprites;
 
 /* Sprite linked lists */
 extern spritelisttype sprlist;
 
-/* Tile/texture data */
-extern int16_t     tilesizx[MAXTILES];
-extern int16_t     tilesizy[MAXTILES];
-extern uint32_t    picanm[MAXTILES];
-extern uint8_t    *tileptr[MAXTILES];
+/* Tile/texture data (dynamically allocated in initengine) */
+extern int16_t     *tilesizx;
+extern int16_t     *tilesizy;
+extern uint32_t    *picanm;
+extern uint8_t    **tileptr;
 
 /* Palette */
-extern uint8_t     palette_raw[768];       /* Original 6-bit DAT */
-extern uint32_t    palette32[256];         /* Converted ABGR8888 */
-extern uint8_t     palookup[64][256];      /* Shade remap tables */
+extern uint8_t     palette_raw[768];
+extern uint32_t    palette32[256];
+extern uint8_t     palookup[64][256];
 extern int32_t     numshades;
 
 /* Trig tables */
-extern int32_t     sintable[2048 + 512];   /* Extra for cos lookup */
+extern int32_t     sintable[2048 + 512];
 
-/* Software framebuffer */
-extern uint32_t    framebuffer[XDIM * YDIM];
+/* Software framebuffer (dynamically allocated) */
+extern uint32_t    *framebuffer;
 
 /* ============================================================
  * Engine API functions

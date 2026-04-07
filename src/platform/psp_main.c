@@ -1,9 +1,6 @@
 /*
- * psp_main.c - PSP entry point and system callbacks
+ * psp_main.c - PSP entry point (minimal/debug version)
  * Redneck Rampage PSP Port
- *
- * Sets up PSP module info, exit callbacks, CPU clock,
- * and launches the game. Includes debug screen logging.
  */
 
 #include <pspkernel.h>
@@ -20,225 +17,142 @@
 
 /* PSP Module Information */
 PSP_MODULE_INFO("RedneckRampage", 0, 1, 0);
-PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER | THREAD_ATTR_VFPU);
-PSP_HEAP_SIZE_KB(16384);  /* 16MB heap - safe value */
+PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER);
+PSP_HEAP_SIZE_KB(4096);  /* 4MB heap only - keep it small */
 
-/* Debug logging macro */
-#define DBG(...) do { \
-    pspDebugScreenPrintf(__VA_ARGS__); \
-    sceDisplayWaitVblankStart(); \
-} while(0)
+/* Use pspDebugScreenPrintf as log */
+#define LOG(...) pspDebugScreenPrintf(__VA_ARGS__)
 
-/* Log file on memory stick */
-static FILE *g_logfile = NULL;
+/* Exit callback */
+static int running = 1;
 
-static void log_init(void) {
-    g_logfile = fopen("ms0:/PSP/GAME/RedneckRampage/debug.log", "w");
-    if (!g_logfile) {
-        g_logfile = fopen("debug.log", "w");
-    }
-}
-
-static void log_write(const char *fmt, ...) {
-    char buf[256];
-    va_list ap;
-    va_start(ap, fmt);
-    vsnprintf(buf, sizeof(buf), fmt, ap);
-    va_end(ap);
-
-    /* Write to debug screen */
-    pspDebugScreenPrintf("%s", buf);
-
-    /* Write to log file */
-    if (g_logfile) {
-        fputs(buf, g_logfile);
-        fflush(g_logfile);
-    }
-}
-
-static void log_close(void) {
-    if (g_logfile) {
-        fclose(g_logfile);
-        g_logfile = NULL;
-    }
-}
-
-/* ============================================================
- * Exit callback - handles HOME button
- * ============================================================ */
-static int exit_callback(int arg1, int arg2, void *common) {
-    (void)arg1;
-    (void)arg2;
-    (void)common;
-    log_close();
+static int exit_cb(int arg1, int arg2, void *common) {
+    (void)arg1; (void)arg2; (void)common;
+    running = 0;
     sceKernelExitGame();
     return 0;
 }
 
-static int callback_thread(SceSize args, void *argp) {
-    (void)args;
-    (void)argp;
-    int cbid = sceKernelCreateCallback("exit_cb", exit_callback, NULL);
+static int cb_thread(SceSize args, void *argp) {
+    (void)args; (void)argp;
+    int cbid = sceKernelCreateCallback("exit_cb", exit_cb, NULL);
     sceKernelRegisterExitCallback(cbid);
     sceKernelSleepThreadCB();
     return 0;
 }
 
-static int setup_callbacks(void) {
-    int thid = sceKernelCreateThread("cb_thread", callback_thread,
-                                      0x11, 0xFA0, 0, NULL);
-    if (thid >= 0) {
-        sceKernelStartThread(thid, 0, NULL);
-    }
-    return thid;
+static void setup_callbacks(void) {
+    int thid = sceKernelCreateThread("cb", cb_thread, 0x11, 0xFA0, 0, NULL);
+    if (thid >= 0) sceKernelStartThread(thid, 0, NULL);
 }
 
-/* ============================================================
- * GRP file search paths
- * ============================================================ */
-static const char *grp_search_paths[] = {
-    "ms0:/PSP/GAME/RedneckRampage/REDNECK.GRP",
-    "REDNECK.GRP",
-    "./REDNECK.GRP",
-    "ms0:/REDNECK.GRP",
-    "host0:/REDNECK.GRP",
-    NULL
-};
-
+/* GRP search */
 static const char *find_grp(void) {
-    for (int i = 0; grp_search_paths[i] != NULL; i++) {
-        log_write("  Trying: %s ... ", grp_search_paths[i]);
-        FILE *f = fopen(grp_search_paths[i], "rb");
+    static const char *paths[] = {
+        "ms0:/PSP/GAME/RedneckRampage/REDNECK.GRP",
+        "REDNECK.GRP",
+        "./REDNECK.GRP",
+        "ms0:/REDNECK.GRP",
+        NULL
+    };
+    for (int i = 0; paths[i]; i++) {
+        LOG("  Try: %s ... ", paths[i]);
+        FILE *f = fopen(paths[i], "rb");
         if (f) {
-            /* Get file size for diagnostic */
             fseek(f, 0, SEEK_END);
-            long size = ftell(f);
+            long sz = ftell(f);
             fclose(f);
-            log_write("FOUND (%ld bytes)\n", size);
-            return grp_search_paths[i];
+            LOG("OK (%ld bytes)\n", sz);
+            return paths[i];
         }
-        log_write("not found\n");
+        LOG("no\n");
     }
     return NULL;
 }
 
-/* ============================================================
- * Wait for button press (debug)
- * ============================================================ */
-static void wait_button(const char *msg) {
-    if (msg) {
-        log_write("\n%s\n", msg);
-    }
-    log_write("Press X to continue...\n");
-    sceDisplayWaitVblankStart();
-
+/* Wait for X button */
+static void wait_x(void) {
+    LOG("\n>> Press X to continue <<\n");
     SceCtrlData pad;
-    /* Wait for release first */
-    do {
-        sceCtrlPeekBufferPositive(&pad, 1);
-    } while (pad.Buttons & PSP_CTRL_CROSS);
-    /* Wait for press */
-    do {
-        sceCtrlPeekBufferPositive(&pad, 1);
-        sceDisplayWaitVblankStart();
-    } while (!(pad.Buttons & PSP_CTRL_CROSS));
+    do { sceCtrlPeekBufferPositive(&pad, 1); sceDisplayWaitVblankStart(); }
+    while (!(pad.Buttons & PSP_CTRL_CROSS));
+    do { sceCtrlPeekBufferPositive(&pad, 1); sceDisplayWaitVblankStart(); }
+    while (pad.Buttons & PSP_CTRL_CROSS);
 }
 
-/* ============================================================
- * Error screen with log info
- * ============================================================ */
-static void show_error(const char *msg) {
-    pspDebugScreenSetTextColor(0x000000FF); /* Red */
-    log_write("\n=== ERROR ===\n");
-    log_write("  %s\n\n", msg);
-    pspDebugScreenSetTextColor(0x00FFFFFF); /* White */
-    log_write("  Place REDNECK.GRP in:\n");
-    log_write("  ms0:/PSP/GAME/RedneckRampage/REDNECK.GRP\n\n");
-    log_write("  Check debug.log for details.\n");
-    log_write("  Press HOME to exit.\n");
-    log_close();
-
-    while (1) {
-        sceDisplayWaitVblankStart();
-    }
-}
-
-/* ============================================================
- * Main entry point
- * ============================================================ */
+/* Main */
 int main(int argc, char *argv[]) {
-    (void)argc;
-    (void)argv;
+    (void)argc; (void)argv;
 
-    /* Init debug screen FIRST */
+    /* STEP 0: Debug screen first thing */
     pspDebugScreenInit();
     pspDebugScreenSetBackColor(0x00000000);
     pspDebugScreenClear();
-    pspDebugScreenSetTextColor(0x0000FFFF); /* Yellow */
 
-    log_write("========================================\n");
-    log_write("  REDNECK RAMPAGE PSP - DEBUG LOG\n");
-    log_write("========================================\n\n");
+    pspDebugScreenSetTextColor(0x0000FFFF);
+    LOG("=================================\n");
+    LOG(" REDNECK RAMPAGE PSP DEBUG v2\n");
+    LOG("=================================\n\n");
 
-    /* Setup exit callback */
-    log_write("[1/7] Setting up callbacks... ");
+    /* STEP 1: Callbacks */
+    LOG("[1] Callbacks... ");
     setup_callbacks();
-    log_write("OK\n");
+    LOG("OK\n");
 
-    /* Init log file */
-    log_write("[2/7] Opening log file... ");
-    log_init();
-    log_write("OK\n");
-
-    /* Set CPU clock */
-    log_write("[3/7] Setting CPU to 333MHz... ");
+    /* STEP 2: CPU */
+    LOG("[2] CPU 333MHz... ");
     scePowerSetClockFrequency(333, 333, 166);
-    log_write("OK\n");
+    LOG("OK\n");
 
-    /* Report memory */
-    log_write("[4/7] Memory info:\n");
-    log_write("  Free mem: %u KB\n", (unsigned)(sceKernelTotalFreeMemSize() / 1024));
-    log_write("  Max block: %u KB\n", (unsigned)(sceKernelMaxFreeMemSize() / 1024));
+    /* STEP 3: Memory report */
+    LOG("[3] Memory:\n");
+    LOG("    Total free: %u KB\n", (unsigned)(sceKernelTotalFreeMemSize() / 1024));
+    LOG("    Max block:  %u KB\n", (unsigned)(sceKernelMaxFreeMemSize() / 1024));
 
-    /* Find GRP file */
-    log_write("[5/7] Searching for REDNECK.GRP...\n");
-    const char *grp_path = find_grp();
-    if (!grp_path) {
-        show_error("REDNECK.GRP not found!");
+    /* STEP 4: Input */
+    LOG("[4] Input init... ");
+    sceCtrlSetSamplingCycle(0);
+    sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
+    LOG("OK\n");
+
+    /* STEP 5: Search GRP */
+    LOG("[5] Searching GRP...\n");
+    const char *grp = find_grp();
+    if (!grp) {
+        pspDebugScreenSetTextColor(0x000000FF);
+        LOG("\n!! REDNECK.GRP NOT FOUND !!\n\n");
+        pspDebugScreenSetTextColor(0x00FFFFFF);
+        LOG("Place REDNECK.GRP in:\n");
+        LOG("ms0:/PSP/GAME/RedneckRampage/\n\n");
+        LOG("Press HOME to exit.\n");
+        while(running) sceDisplayWaitVblankStart();
         sceKernelExitGame();
         return 1;
     }
-    log_write("  Using: %s\n", grp_path);
 
-    /* Initialize game */
-    log_write("[6/7] Initializing game engine...\n");
-    pspDebugScreenSetTextColor(0x0000FF00); /* Green */
-    int init_result = game_init(grp_path);
-    if (init_result != 0) {
-        pspDebugScreenSetTextColor(0x000000FF); /* Red */
-        char errmsg[128];
-        snprintf(errmsg, sizeof(errmsg), "game_init() failed with code %d", init_result);
-        show_error(errmsg);
+    /* STEP 6: Init game */
+    LOG("[6] Game init...\n");
+    int ret = game_init(grp);
+    if (ret != 0) {
+        pspDebugScreenSetTextColor(0x000000FF);
+        LOG("\n!! game_init FAILED: %d !!\n", ret);
+        LOG("Mem free: %u KB\n", (unsigned)(sceKernelTotalFreeMemSize() / 1024));
+        wait_x();
         sceKernelExitGame();
         return 1;
     }
-    log_write("  Game init OK!\n");
 
-    /* Start game */
-    pspDebugScreenSetTextColor(0x0000FFFF); /* Yellow */
-    log_write("[7/7] Starting game loop...\n");
-    log_write("  Free mem now: %u KB\n\n", (unsigned)(sceKernelTotalFreeMemSize() / 1024));
+    pspDebugScreenSetTextColor(0x0000FF00);
+    LOG("[7] INIT OK! Mem: %u KB free\n",
+        (unsigned)(sceKernelTotalFreeMemSize() / 1024));
 
-    wait_button("All systems ready!");
+    wait_x();
 
-    /* Run game loop */
+    /* Run game */
     game_run();
 
     /* Cleanup */
-    log_write("Game exited normally.\n");
     game_shutdown();
-    log_close();
-
     sceKernelExitGame();
     return 0;
 }

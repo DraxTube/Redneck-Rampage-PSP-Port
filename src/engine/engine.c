@@ -15,20 +15,20 @@
 #include <math.h>
 
 /* ============================================================
- * Global engine data
+ * Global engine data (dynamically allocated)
  * ============================================================ */
-sectortype  sector[MAXSECTORS];
-walltype    wall[MAXWALLS];
-spritetype  sprite[MAXSPRITES];
+sectortype  *sector = NULL;
+walltype    *wall = NULL;
+spritetype  *sprite = NULL;
 int16_t     numsectors = 0, numwalls = 0;
 int16_t     numsprites = 0;
 
 spritelisttype sprlist;
 
-int16_t     tilesizx[MAXTILES];
-int16_t     tilesizy[MAXTILES];
-uint32_t    picanm[MAXTILES];
-uint8_t    *tileptr[MAXTILES];
+int16_t     *tilesizx = NULL;
+int16_t     *tilesizy = NULL;
+uint32_t    *picanm = NULL;
+uint8_t    **tileptr = NULL;
 
 uint8_t     palette_raw[768];
 uint32_t    palette32[256];
@@ -37,7 +37,7 @@ int32_t     numshades = 32;
 
 int32_t     sintable[2048 + 512];
 
-uint32_t    framebuffer[XDIM * YDIM];
+uint32_t    *framebuffer = NULL;
 
 /* ============================================================
  * Renderer state (per-frame)
@@ -75,6 +75,22 @@ static int32_t  num_tsprites;
 void initengine(void) {
     int i;
 
+    /* Dynamically allocate large arrays */
+    sector     = (sectortype *)calloc(MAXSECTORS, sizeof(sectortype));
+    wall       = (walltype *)calloc(MAXWALLS, sizeof(walltype));
+    sprite     = (spritetype *)calloc(MAXSPRITES, sizeof(spritetype));
+    tilesizx   = (int16_t *)calloc(MAXTILES, sizeof(int16_t));
+    tilesizy   = (int16_t *)calloc(MAXTILES, sizeof(int16_t));
+    picanm     = (uint32_t *)calloc(MAXTILES, sizeof(uint32_t));
+    tileptr    = (uint8_t **)calloc(MAXTILES, sizeof(uint8_t *));
+    framebuffer = (uint32_t *)calloc(XDIM * YDIM, sizeof(uint32_t));
+
+    if (!sector || !wall || !sprite || !tilesizx || !tilesizy ||
+        !picanm || !tileptr || !framebuffer) {
+        /* Fatal: can't allocate core arrays */
+        return;
+    }
+
     /* Build sine table (16.16 fixed-point) */
     for (i = 0; i < 2048; i++) {
         float angle = (float)i * (2.0f * 3.14159265f / 2048.0f);
@@ -84,12 +100,6 @@ void initengine(void) {
     for (i = 0; i < 512; i++) {
         sintable[2048 + i] = sintable[i];
     }
-
-    /* Clear tile data */
-    memset(tilesizx, 0, sizeof(tilesizx));
-    memset(tilesizy, 0, sizeof(tilesizy));
-    memset(picanm, 0, sizeof(picanm));
-    memset(tileptr, 0, sizeof(tileptr));
 
     /* Initialize sprite lists */
     memset(&sprlist, -1, sizeof(sprlist));
@@ -104,10 +114,15 @@ void initengine(void) {
 
 void uninitengine(void) {
     cache_free(&g_tile_cache);
-    for (int i = 0; i < MAXTILES; i++) {
-        /* tileptr points into cache, don't double-free */
-        tileptr[i] = NULL;
-    }
+
+    free(sector);     sector = NULL;
+    free(wall);       wall = NULL;
+    free(sprite);     sprite = NULL;
+    free(tilesizx);   tilesizx = NULL;
+    free(tilesizy);   tilesizy = NULL;
+    free(picanm);     picanm = NULL;
+    free(tileptr);    tileptr = NULL;
+    free(framebuffer); framebuffer = NULL;
 }
 
 /* ============================================================
