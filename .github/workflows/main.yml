@@ -1,0 +1,43 @@
+name: Build PSP EBOOT
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    name: Build Redneck Rampage PSP
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/pspdev/psp:latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create build directory
+        run: mkdir -p build
+
+      - name: Configure with CMake (PSP toolchain)
+        run: |
+          cd build
+          psp-cmake ..
+
+      - name: Build
+        run: |
+          cd build
+          make -j$(nproc)
+
+      - name: Verify EBOOT.PBP exists
+        run: |
+          ls -la build/EBOOT.PBP
+          echo "Build successful! EBOOT.PBP generated."
+
+      - name: Upload EBOOT.PBP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RedneckRampage-PSP-EBOOT
+          path: build/EBOOT.PBP
+          if-no-files-found: error
