@@ -17,16 +17,16 @@ void psp_timer_init(void) {
     tick_res = sceRtcGetTickResolution(); /* Ticks per second */
     if (tick_res == 0) tick_res = 1000000;
 
-    SceRtcTick tick;
+    u64 tick;
     sceRtcGetCurrentTick(&tick);
-    frame_start_time = tick.tick;
+    frame_start_time = (uint64_t)tick;
     last_frame_time = frame_start_time;
 }
 
 uint64_t psp_timer_get_us(void) {
-    SceRtcTick tick;
+    u64 tick;
     sceRtcGetCurrentTick(&tick);
-    return tick.tick;
+    return (uint64_t)tick;
 }
 
 uint32_t psp_timer_get_ms(void) {

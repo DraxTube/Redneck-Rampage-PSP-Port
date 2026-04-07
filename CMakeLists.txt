@@ -72,7 +72,7 @@ target_compile_options(${PROJECT_NAME} PRIVATE
 # Definitions
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     PSP
-    _PSP_FW_VERSION=660
+    __PSP__
 )
 
 # Link PSP libraries
