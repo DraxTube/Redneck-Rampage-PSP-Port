@@ -75,20 +75,21 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     __PSP__
 )
 
-# Link PSP libraries
+# Link PSP libraries (ORDER MATTERS!)
 target_link_libraries(${PROJECT_NAME}
-    pspgu
-    pspge
+    pspdebug
     pspdisplay
+    pspge
     pspctrl
     pspaudio
-    pspaudiolib
     psppower
     psprtc
-    pspkernel
-    pspdebug
     psputility
+    pspsdk
+    pspuser
+    pspkernel
     m
+    c
 )
 
 # Create EBOOT.PBP
